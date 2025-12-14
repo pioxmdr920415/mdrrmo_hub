@@ -1,6 +1,8 @@
+
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { supabase, isSupabaseConfigured, getErrorMessage, type MapFeature } from "@/lib/supabase";
 import { Header } from "@/components/header";
 import { BackgroundPattern } from "@/components/background-pattern";
 import { LoadingSpinner } from "@/components/loading-spinner";
@@ -36,6 +38,9 @@ import {
   ZoomOut,
   Copy,
 } from "lucide-react";
+// @ts-ignore
+import { Pannellum } from "pannellum-react";
+import "pannellum/build/pannellum.css";
 import type {
   MapLayer,
   HazardZone,
@@ -44,6 +49,7 @@ import type {
   DriveFile,
   GoogleOpenMap,
 } from "@shared/schema";
+
 
 const GOOGLE_OPEN_MAPS: GoogleOpenMap[] = [
   {
@@ -69,7 +75,7 @@ const GOOGLE_OPEN_MAPS: GoogleOpenMap[] = [
 const DEFAULT_MAP_EMBED =
   "https://www.google.com/maps/d/embed?mid=1BmibV2upcL5kwmEKIJPLfit7VNQAqk0&ehbc=2E312F&noprof=1";
 
-const GOOGLE_API_KEY = "AIzaSyCDcthLGNPlbMr4AFzuK5tl0CMTzsQI9EI";
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 const MAP_LAYERS: MapLayer[] = [
   {
@@ -93,6 +99,7 @@ const MAP_LAYERS: MapLayer[] = [
   { id: "land-use", name: "Land Use Map", type: "land-use", active: false },
   { id: "hazards", name: "Hazards Maps", type: "hazards", active: false },
   { id: "other", name: "Other Map", type: "other", active: false },
+  { id: "panorama", name: "Panorama", type: "panorama", active: false },
   {
     id: "google-open",
     name: "Google Open Map",
@@ -108,6 +115,7 @@ const layerIcons: Record<string, any> = {
   "land-use": Landmark,
   hazards: AlertTriangle,
   other: MapPinned,
+  panorama: Globe,
   "google-open": Globe,
 };
 
@@ -121,6 +129,8 @@ const getLayerApiEndpoint = (type: string): string | null => {
       return "/api/maps/land-use";
     case "hazards":
       return "/api/maps/hazards-files";
+    case "panorama":
+      return "/api/maps/panorama";
     case "other":
       return "/api/maps/other";
     default:
@@ -135,17 +145,8 @@ const getFileIcon = (mimeType: string) => {
   return File;
 };
 
-// Feature types for drawing
-type MapFeature = {
-  id: string;
-  type: "marker" | "polygon" | "line";
-  coordinates: { lat: number; lng: number }[];
-  title: string;
-  description?: string;
-  color: string;
-  fillColor?: string;
-  weight?: number;
-};
+
+// Feature types for drawing are now imported from supabase.ts
 
 export default function Maps() {
   const [layers, setLayers] = useState<MapLayer[]>(MAP_LAYERS);
@@ -187,15 +188,25 @@ export default function Maps() {
   const imageRef = useRef<HTMLImageElement>(null);
   const queryClient = useQueryClient();
 
+
   useEffect(() => {
     const loadFeatures = async () => {
+      // Check if Supabase is properly configured
+      if (!isSupabaseConfigured()) {
+        console.warn('Supabase not configured - map features will not be saved');
+        return;
+      }
+
       try {
         const { data, error } = await supabase
           .from('map_features')
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error loading features:', error);
+          return;
+        }
 
         if (data) {
           const features: MapFeature[] = data.map((f) => ({
@@ -211,16 +222,27 @@ export default function Maps() {
           setMapFeatures(features);
         }
       } catch (error) {
-        console.error('Error loading map features:', error);
+        console.error('Error loading map features:', getErrorMessage(error));
       }
     };
 
     loadFeatures();
   }, []);
 
+
   const saveFeatureToDb = async (feature: MapFeature) => {
+    // Check if Supabase is properly configured
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase not configured - feature will not be saved to database');
+      return;
+    }
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.warn('Auth error (features will be saved without user):', authError);
+      }
 
       const { error } = await supabase
         .from('map_features')
@@ -236,28 +258,51 @@ export default function Maps() {
           created_by: user?.id || null,
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error saving feature:', error);
+      }
     } catch (error) {
-      console.error('Error saving feature:', error);
+      console.error('Error saving feature:', getErrorMessage(error));
     }
   };
 
+
   const deleteFeatureFromDb = async (id: string) => {
+    // Check if Supabase is properly configured
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase not configured - feature will not be deleted from database');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('map_features')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error deleting feature:', error);
+      }
     } catch (error) {
-      console.error('Error deleting feature:', error);
+      console.error('Error deleting feature:', getErrorMessage(error));
     }
   };
 
+
   const clearAllFeaturesFromDb = async () => {
+    // Check if Supabase is properly configured
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase not configured - features will not be cleared from database');
+      return;
+    }
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.warn('Auth error (cannot clear user-specific features):', authError);
+        return;
+      }
 
       if (user) {
         const { error } = await supabase
@@ -265,10 +310,12 @@ export default function Maps() {
           .delete()
           .eq('created_by', user.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error clearing features:', error);
+        }
       }
     } catch (error) {
-      console.error('Error clearing features:', error);
+      console.error('Error clearing features:', getErrorMessage(error));
     }
   };
 
@@ -1955,7 +2002,8 @@ export default function Maps() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleCopyImage}
-                  className="p-2 rounded-lg transition-all hover-elevate"
+                  disabled={activeLayer?.type === "panorama"}
+                  className="p-2 rounded-lg transition-all hover-elevate disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: "rgba(0, 163, 141, 0.2)",
                     color: "#00A38D",
@@ -1979,7 +2027,8 @@ export default function Maps() {
                 </button>
                 <button
                   onClick={handlePrintImage}
-                  className="p-2 rounded-lg transition-all hover-elevate"
+                  disabled={activeLayer?.type === "panorama"}
+                  className="p-2 rounded-lg transition-all hover-elevate disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: "rgba(0, 163, 141, 0.2)",
                     color: "#00A38D",
@@ -2009,13 +2058,29 @@ export default function Maps() {
                 borderTop: "none",
               }}
             >
-              <img
-                ref={imageRef}
-                src={modalImageUrl}
-                alt={modalImageName}
-                className="max-w-full max-h-full object-contain"
-                style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
-              />
+              {activeLayer?.type === "panorama" ? (
+                <div className="w-full h-full max-w-4xl max-h-[70vh]">
+                  <Pannellum
+                    width="100%"
+                    height="100%"
+                    image={modalImageUrl}
+                    pitch={10}
+                    yaw={180}
+                    hfov={110}
+                    autoLoad
+                    compass
+                    mouseZoom={false}
+                  />
+                </div>
+              ) : (
+                <img
+                  ref={imageRef}
+                  src={modalImageUrl}
+                  alt={modalImageName}
+                  className="max-w-full max-h-full object-contain"
+                  style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
+                />
+              )}
             </div>
           </div>
         </div>

@@ -112,7 +112,7 @@ export interface MapAsset {
 export interface MapLayer {
   id: string;
   name: string;
-  type: "interactive" | "administrative" | "topographic" | "land-use" | "hazards" | "other" | "google-open";
+  type: "interactive" | "administrative" | "topographic" | "land-use" | "hazards" | "other" | "panorama" | "google-open";
   active: boolean;
   opacity?: number;
   folderId?: string;

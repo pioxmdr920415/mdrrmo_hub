@@ -15,6 +15,7 @@ const MAP_FOLDER_IDS = {
   "land-use": "1yQmtrKfKiMOFA933W0emzeGoexMpUDGM",
   hazards: "16xy_oUAr6sWb3JE9eNrxYJdAMDRKGYLn",
   other: "1MI1aO_-gQwsRbSJsfHY2FI4AOz9Jney1",
+  panorama: "1tsbcsTEfg5RLHLJLYXR41avy9SrajsqM",
 };
 
 async function getGoogleDriveClient() {

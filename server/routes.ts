@@ -576,6 +576,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/maps/panorama", async (req, res) => {
+    try {
+      const maps = await getMapFolderContents('panorama');
+      res.json(maps);
+    } catch (error) {
+      console.error("Error fetching panorama maps:", error);
+      res.status(500).json({ error: "Failed to fetch panorama maps" });
+    }
+  });
+
   app.get("/api/maps/subfolder/:folderId", async (req, res) => {
     try {
       const { folderId } = req.params;
